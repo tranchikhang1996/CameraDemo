@@ -28,7 +28,6 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
-import java.util.concurrent.SynchronousQueue
 
 class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     private lateinit var binding: Camera2FragmentLayoutBinding
@@ -40,12 +39,19 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
 
     @Volatile
     private lateinit var cameraId: String
+
     @Volatile
     private lateinit var cameraCharacteristics: CameraCharacteristics
+
     @Volatile
     private lateinit var camera: CameraDevice
+
+    @Volatile
+    private lateinit var cameraCaptureSession: CameraCaptureSession
+
     @Volatile
     private lateinit var imageReader: ImageReader
+
     @Volatile
     private var rotation: Int = 0
 
@@ -57,6 +63,7 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     private val fileExecutor = Executors.newSingleThreadExecutor()
 
     private var rotationListener: OrientationEventListener? = null
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,43 +80,19 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         return binding.root
     }
 
-    override fun onResume() {
-        super.onResume()
-        tryToStartCamera()
-    }
-
-    private fun tryToStartCamera() {
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            permissionLauncher.launch(REQUIRED_PERMISSIONS)
-        }
-    }
-
-    private fun onPermissionResult() {
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            Toast.makeText(requireContext(), "Permissions not granted!", Toast.LENGTH_SHORT).show()
-            requireActivity().finish()
-        }
-    }
-
-    private fun listenOrientationChanged(cameraCharacteristics: CameraCharacteristics) {
-        rotationListener?.disable()
-        rotationListener = object : OrientationEventListener(requireContext().applicationContext) {
-            override fun onOrientationChanged(orientation: Int) {
-                val surfaceRotation = when {
-                    orientation <= 45 -> Surface.ROTATION_0
-                    orientation <= 135 -> Surface.ROTATION_90
-                    orientation <= 225 -> Surface.ROTATION_180
-                    orientation <= 315 -> Surface.ROTATION_270
-                    else -> Surface.ROTATION_0
-                }
-                rotation = computeRelativeRotation(cameraCharacteristics, surfaceRotation)
-            }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        cameraId = getFirstCameraIdFacing(cameraManager) ?: return run { requireActivity().finish() }
+        cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId).apply {
+            setOrientationChangedListener(this)
         }
         rotationListener?.enable()
+        binding.captureButton.isEnabled = false
+        binding.captureButton.setOnClickListener {
+            it.isEnabled = false
+            takePhoto()
+        }
+        binding.viewFinder.holder.addCallback(this)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -130,23 +113,41 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
             imageSize.size.height,
             ImageFormat.JPEG,
             IMAGE_BUFFER_SIZE
-        )
-        view?.post { openCamera(cameraId) }
+        ).apply {
+            setOnImageAvailableListener({ reader -> savePhoto(reader.acquireLatestImage()) }, imageReaderHandler)
+        }
+        view?.post { tryToOpenCamera() }
     }
 
-    override fun surfaceChanged(p0: SurfaceHolder, p1: Int, p2: Int, p3: Int) = Unit
+    private fun tryToOpenCamera() {
+        if (allPermissionsGranted()) {
+            openCamera(cameraId)
+        } else {
+            permissionLauncher.launch(REQUIRED_PERMISSIONS)
+        }
+    }
 
-    override fun surfaceDestroyed(p0: SurfaceHolder) = Unit
-
-    private fun startCamera() {
-        cameraId = getFirstCameraIdFacing(cameraManager) ?: return run {
-            Toast.makeText(requireContext(), "No device camera available!", Toast.LENGTH_SHORT).show()
+    private fun onPermissionResult() {
+        if (allPermissionsGranted()) {
+            tryToOpenCamera()
+        } else {
             requireActivity().finish()
         }
-        cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId).apply {
-            listenOrientationChanged(this)
+    }
+
+    private fun setOrientationChangedListener(cameraCharacteristics: CameraCharacteristics) {
+        rotationListener = object : OrientationEventListener(requireContext().applicationContext) {
+            override fun onOrientationChanged(orientation: Int) {
+                val surfaceRotation = when {
+                    orientation <= 45 -> Surface.ROTATION_0
+                    orientation <= 135 -> Surface.ROTATION_90
+                    orientation <= 225 -> Surface.ROTATION_180
+                    orientation <= 315 -> Surface.ROTATION_270
+                    else -> Surface.ROTATION_0
+                }
+                rotation = computeRelativeRotation(cameraCharacteristics, surfaceRotation)
+            }
         }
-        binding.viewFinder.holder.addCallback(this)
     }
 
     @SuppressLint("MissingPermission")
@@ -193,42 +194,31 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     }
 
     private fun onSessionConfigured(cameraCaptureSession: CameraCaptureSession) {
-        val captureRequest = cameraCaptureSession.device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-            addTarget(binding.viewFinder.holder.surface)
-        }
+        this.cameraCaptureSession = cameraCaptureSession
+        val captureRequest =
+            cameraCaptureSession.device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                addTarget(binding.viewFinder.holder.surface)
+            }
         cameraCaptureSession.setRepeatingRequest(captureRequest.build(), null, cameraHandler)
-        binding.captureButton.post {
-            binding.captureButton.setOnClickListener {
-                it.isEnabled = false
-                takePhoto(cameraCaptureSession)
-            }
-        }
+
+        binding.captureButton.post { binding.captureButton.isEnabled = true }
     }
 
-    private fun takePhoto(cameraCaptureSession: CameraCaptureSession) {
-        val imageQueue = SynchronousQueue<Image>()
-        imageReader.setOnImageAvailableListener({ reader ->
-            imageQueue.add(reader.acquireLatestImage())
-        }, imageReaderHandler)
-        val captureRequest = cameraCaptureSession.device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-            .apply { addTarget(imageReader.surface) }
-        val callback = object : CameraCaptureSession.CaptureCallback() {
-            override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
-                super.onCaptureCompleted(session, request, result)
-                savePhoto(imageQueue)
-            }
-        }
-        cameraCaptureSession.capture(captureRequest.build(), callback, cameraHandler)
+    private fun takePhoto() {
+        val captureRequest =
+            cameraCaptureSession.device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                .apply { addTarget(imageReader.surface) }
+        cameraCaptureSession.capture(captureRequest.build(), null, cameraHandler)
     }
 
-    private fun savePhoto(queue: SynchronousQueue<Image>) = fileExecutor.execute {
-        queue.take().use { image ->
+    private fun savePhoto(image: Image) = fileExecutor.execute {
+        image.use {
             val mirrored = cameraCharacteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
             val exifOrientation = computeExifOrientation(rotation, mirrored)
-            val buffer = image.planes[0].buffer
+            val buffer = it.planes[0].buffer
             val bytes = ByteArray(buffer.remaining()).apply { buffer.get(this) }
             val output = createFile(requireContext())
-            FileOutputStream(output).buffered().use { it.write(bytes) }
+            FileOutputStream(output).buffered().use { buffered -> buffered.write(bytes) }
             val exif = ExifInterface(output.absolutePath)
             exif.setAttribute(ExifInterface.TAG_ORIENTATION, exifOrientation.toString())
             exif.saveAttributes()
@@ -245,13 +235,16 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         ContextCompat.checkSelfPermission(requireContext(), it) == PackageManager.PERMISSION_GRANTED
     }
 
-    override fun onPause() {
-        super.onPause()
-        binding.viewFinder.holder.removeCallback(this)
-        rotationListener?.disable()
+    override fun onStop() {
+        super.onStop()
         kotlin.runCatching { camera.close() }
     }
 
+    override fun onDestroyView() {
+        super.onDestroyView()
+        rotationListener?.disable()
+        binding.viewFinder.holder.removeCallback(this)
+    }
     override fun onDestroy() {
         super.onDestroy()
         fileExecutor.shutdown()
@@ -265,6 +258,10 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         val sdf = SimpleDateFormat("yyyy_MM_dd_HH_mm_ss_SSS", Locale.US)
         return File(context.getExternalFilesDir(null), "IMG_${sdf.format(Date())}.$extension")
     }
+
+    override fun surfaceChanged(p0: SurfaceHolder, p1: Int, p2: Int, p3: Int) = Unit
+
+    override fun surfaceDestroyed(p0: SurfaceHolder) = Unit
 
     companion object {
         private const val IMAGE_BUFFER_SIZE = 1
