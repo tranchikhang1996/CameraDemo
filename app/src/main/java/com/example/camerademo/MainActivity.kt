@@ -14,7 +14,7 @@ class MainActivity : AppCompatActivity() {
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
         if (savedInstanceState == null) {
-            supportFragmentManager.commit { replace(R.id.fragment_container, Camera2Fragment()) }
+            supportFragmentManager.commit { replace(R.id.fragment_container, CameraXFragment()) }
         }
     }
 

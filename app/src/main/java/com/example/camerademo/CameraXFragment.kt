@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import com.example.camerademo.databinding.CameraxFragmentLayoutBinding
 import java.io.File
@@ -47,6 +48,12 @@ class CameraXFragment : Fragment() {
         tryToStartCamera()
     }
 
+    override fun onPause() {
+        super.onPause()
+        binding.zoomSlider.value = 1f
+        binding.exposureSlider.value = 0f
+    }
+
     private fun tryToStartCamera() {
         if (allPermissionsGranted()) {
             startCamera()
@@ -78,6 +85,36 @@ class CameraXFragment : Fragment() {
         orientationEventListener.enable()
     }
 
+    private fun setZoomSlider(camera: Camera) = binding.zoomSlider.apply {
+        binding.zoomSliderContainer.isVisible = true
+        val minZoomRatio = camera.cameraInfo.zoomState.value?.minZoomRatio ?: 0f
+        val maxZoomRatio = camera.cameraInfo.zoomState.value?.maxZoomRatio ?: 1f
+        valueFrom = minZoomRatio
+        valueTo = maxZoomRatio
+        stepSize = 1f
+        value = 1f
+        clearOnChangeListeners()
+        addOnChangeListener { _, v, _ -> camera.cameraControl.setZoomRatio(v) }
+    }
+
+    private fun setTorch(camera: Camera) {
+        binding.flashLight.setOnClickListener {
+            it.isSelected = !it.isSelected
+            camera.cameraControl.enableTorch(it.isSelected)
+        }
+    }
+
+    private fun setExposureSlider(camera: Camera) = binding.exposureSlider.apply {
+        binding.exposureSliderContainer.isVisible = true
+        isVisible = camera.cameraInfo.exposureState.isExposureCompensationSupported
+        valueFrom = camera.cameraInfo.exposureState.exposureCompensationRange.lower.toFloat()
+        valueTo = camera.cameraInfo.exposureState.exposureCompensationRange.upper.toFloat()
+        value = camera.cameraInfo.exposureState.exposureCompensationIndex.toFloat()
+        stepSize = camera.cameraInfo.exposureState.exposureCompensationStep.toFloat()
+        clearOnChangeListeners()
+        addOnChangeListener { _, v, _ -> camera.cameraControl.setExposureCompensationIndex(v.toInt()) }
+    }
+
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
 
@@ -90,13 +127,16 @@ class CameraXFragment : Fragment() {
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
             imageCapture = ImageCapture.Builder()
-                .setTargetRotation(binding.viewFinder.display.rotation)
                 .setTargetAspectRatio(AspectRatio.RATIO_4_3)
                 .build()
 
             kotlin.runCatching {
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
+            }.getOrNull()?.let {
+                setZoomSlider(it)
+                setTorch(it)
+                setExposureSlider(it)
             }
         }, ContextCompat.getMainExecutor(requireContext()))
     }
