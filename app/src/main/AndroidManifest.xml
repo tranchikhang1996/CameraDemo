@@ -12,7 +12,6 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <uses-feature android:name="android.hardware.camera.any" />
     <uses-feature android:name="android.hardware.camera.raw" android:required="false" />
 
     <application
