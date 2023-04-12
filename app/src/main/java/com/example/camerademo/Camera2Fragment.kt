@@ -9,10 +9,7 @@ import android.hardware.camera2.*
 import android.media.Image
 import android.media.ImageReader
 import android.net.Uri
-import android.os.Build
-import android.os.Bundle
-import android.os.Handler
-import android.os.HandlerThread
+import android.os.*
 import android.view.*
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
@@ -64,6 +61,9 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
 
     private var rotationListener: OrientationEventListener? = null
 
+    @Volatile
+    private var isSurfaceCreated = false
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,42 +95,64 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         binding.viewFinder.holder.addCallback(this)
     }
 
+    override fun onResume() {
+        super.onResume()
+        tryToOpenCamera()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        kotlin.runCatching { camera.close() }
+    }
     override fun surfaceCreated(holder: SurfaceHolder) {
-        val previewSize = getPreviewOutputSize(
-            binding.viewFinder.display,
-            cameraCharacteristics,
-            SurfaceHolder::class.java
-        )
-        binding.viewFinder.setAspectRatio(previewSize.width, previewSize.height)
-        val imageSize = getImageOutputSize(
-            cameraCharacteristics,
-            ImageFormat.JPEG,
-            previewSize.width,
-            previewSize.height
-        )
-        imageReader = ImageReader.newInstance(
-            imageSize.size.width,
-            imageSize.size.height,
-            ImageFormat.JPEG,
-            IMAGE_BUFFER_SIZE
-        ).apply {
-            setOnImageAvailableListener({ reader -> savePhoto(reader.acquireLatestImage()) }, imageReaderHandler)
+        if (!isSurfaceCreated) {
+            val previewSize = getPreviewOutputSize(
+                binding.viewFinder.display,
+                cameraCharacteristics,
+                SurfaceHolder::class.java
+            )
+            binding.viewFinder.setAspectRatio(previewSize.width, previewSize.height)
+            val imageSize = getImageOutputSize(
+                cameraCharacteristics,
+                ImageFormat.JPEG,
+                previewSize.width,
+                previewSize.height
+            )
+            imageReader = ImageReader.newInstance(
+                imageSize.size.width,
+                imageSize.size.height,
+                ImageFormat.JPEG,
+                IMAGE_BUFFER_SIZE
+            ).apply {
+                setOnImageAvailableListener(
+                    { reader -> savePhoto(reader.acquireLatestImage()) },
+                    imageReaderHandler
+                )
+            }
         }
-        view?.post { tryToOpenCamera() }
+        isSurfaceCreated = true
+    }
+
+    override fun surfaceChanged(p0: SurfaceHolder, p1: Int, p2: Int, p3: Int) = Unit
+
+    override fun surfaceDestroyed(p0: SurfaceHolder) {
+        isSurfaceCreated = false
     }
 
     private fun tryToOpenCamera() {
         if (allPermissionsGranted()) {
-            openCamera(cameraId)
+            cameraHandler.post {
+                @Suppress("ControlFlowWithEmptyBody")
+                while (!isSurfaceCreated) { }
+                openCamera(cameraId)
+            }
         } else {
             permissionLauncher.launch(REQUIRED_PERMISSIONS)
         }
     }
 
     private fun onPermissionResult() {
-        if (allPermissionsGranted()) {
-            tryToOpenCamera()
-        } else {
+        if (!allPermissionsGranted()) {
             requireActivity().finish()
         }
     }
@@ -235,11 +257,6 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         ContextCompat.checkSelfPermission(requireContext(), it) == PackageManager.PERMISSION_GRANTED
     }
 
-    override fun onStop() {
-        super.onStop()
-        kotlin.runCatching { camera.close() }
-    }
-
     override fun onDestroyView() {
         super.onDestroyView()
         rotationListener?.disable()
@@ -247,6 +264,8 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     }
     override fun onDestroy() {
         super.onDestroy()
+        cameraHandler.removeCallbacksAndMessages(null)
+        imageReaderHandler.removeCallbacksAndMessages(null)
         fileExecutor.shutdown()
         cameraExecutor.shutdown()
         cameraThread.quitSafely()
@@ -256,12 +275,8 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
 
     private fun createFile(context: Context, extension: String = "jpg"): File {
         val sdf = SimpleDateFormat("yyyy_MM_dd_HH_mm_ss_SSS", Locale.US)
-        return File(context.getExternalFilesDir(null), "IMG_${sdf.format(Date())}.$extension")
+        return File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "IMG_${sdf.format(Date())}.$extension")
     }
-
-    override fun surfaceChanged(p0: SurfaceHolder, p1: Int, p2: Int, p3: Int) = Unit
-
-    override fun surfaceDestroyed(p0: SurfaceHolder) = Unit
 
     companion object {
         private const val IMAGE_BUFFER_SIZE = 1
