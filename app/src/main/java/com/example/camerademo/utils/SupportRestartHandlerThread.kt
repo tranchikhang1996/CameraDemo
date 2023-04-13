@@ -5,14 +5,13 @@ import android.os.HandlerThread
 
 
 class SupportRestartHandlerThread(private val name: String) {
-    private var handlerThread: HandlerThread = HandlerThread(name).apply { start() }
-    private var handler = Handler(handlerThread.looper)
-    private var isShutdown = false
+    private lateinit var handlerThread: HandlerThread
+    private lateinit var handler: Handler
+    private var isShutdown = true
 
     @Synchronized
     fun shutdown() {
         if (!isShutdown) {
-            handler.removeCallbacksAndMessages(null)
             handlerThread.quitSafely()
             isShutdown = true
         }
@@ -22,6 +21,7 @@ class SupportRestartHandlerThread(private val name: String) {
     fun restart() {
         if (isShutdown) {
             handlerThread = HandlerThread(name).apply { start() }
+            handler = Handler(handlerThread.looper)
             isShutdown = false
         }
     }

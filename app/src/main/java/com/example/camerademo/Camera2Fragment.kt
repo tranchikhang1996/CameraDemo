@@ -13,7 +13,6 @@ import android.hardware.camera2.CameraDevice.TEMPLATE_PREVIEW
 import android.hardware.camera2.CameraDevice.TEMPLATE_STILL_CAPTURE
 import android.media.Image
 import android.media.ImageReader
-import android.net.Uri
 import android.os.*
 import android.view.*
 import androidx.activity.result.ActivityResultLauncher
@@ -59,7 +58,9 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     @Volatile
     private var rotation: Int = 0
 
-    private var cameraExecutor = SupportRestartHandlerThread("Camera")
+    private var cameraRequestExecutor = SupportRestartHandlerThread("camera request")
+    private val cameraThread = HandlerThread("camera").apply { start() }
+    private val cameraHandler = Handler(cameraThread.looper)
     private val readerThread = HandlerThread("imageReaderThread").apply { start() }
     private val readerHandler = Handler(readerThread.looper)
     private val fileExecutor = Executors.newSingleThreadExecutor()
@@ -68,6 +69,12 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
 
     @Volatile
     private var isSurfaceCreated = false
+
+    @Volatile
+    private var sensorSize: Rect? = null
+
+    @Volatile
+    private var maxZoom = 1f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,13 +93,8 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        binding.captureButton.setOnClickListener {
-            it.isEnabled = false
-            takePhoto()
-        }
-        binding.flashLight.setOnClickListener {
-            it.isSelected = !it.isSelected
-        }
+        binding.captureButton.setOnClickListener { takePhoto() }
+        binding.flashLight.setOnClickListener { it.isSelected = !it.isSelected }
         binding.viewFinder.holder.addCallback(this)
     }
 
@@ -104,16 +106,43 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     override fun onPause() {
         super.onPause()
         rotationListener?.disable()
+        cameraRequestExecutor.shutdown()
         kotlin.runCatching { camera.close() }
     }
 
     private fun onPermissionResult() {
-        if (!allPermissionsGranted()) {
+        if (!allPermissionsGranted) {
             requireActivity().finish()
         }
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
+        if(!isSurfaceCreated) {
+            cameraId = getFirstCameraIdFacing(cameraManager) ?: return run { requireActivity().finish() }
+            characteristics = cameraManager.getCameraCharacteristics(cameraId).apply { setOrientationChangedListener(this) }
+            val previewSize = getPreviewOutputSize(
+                binding.viewFinder.display,
+                characteristics,
+                SurfaceHolder::class.java
+            )
+            binding.viewFinder.setAspectRatio(previewSize.width, previewSize.height)
+            val imageSize = getImageOutputSize(
+                characteristics,
+                ImageFormat.JPEG,
+                previewSize.width,
+                previewSize.height
+            )
+            imageReader = ImageReader.newInstance(
+                imageSize.size.width,
+                imageSize.size.height,
+                ImageFormat.JPEG,
+                IMAGE_BUFFER_SIZE
+            ).apply {
+                setOnImageAvailableListener(
+                    { reader -> savePhoto(reader.acquireNextImage()) }, readerHandler
+                )
+            }
+        }
         isSurfaceCreated = true
     }
 
@@ -124,9 +153,8 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     }
 
     private fun tryToOpenCamera() {
-        if (allPermissionsGranted()) {
-            cameraExecutor.restart()
-            cameraExecutor.submit {
+        if (allPermissionsGranted) {
+            cameraHandler.post {
                 @Suppress("ControlFlowWithEmptyBody")
                 while (!isSurfaceCreated) { }
                 openCamera()
@@ -138,31 +166,6 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
 
     @SuppressLint("MissingPermission")
     private fun openCamera() {
-        cameraId = getFirstCameraIdFacing(cameraManager) ?: return run { requireActivity().finish() }
-        characteristics = cameraManager.getCameraCharacteristics(cameraId).apply { setOrientationChangedListener(this) }
-        val previewSize = getPreviewOutputSize(
-            binding.viewFinder.display,
-            characteristics,
-            SurfaceHolder::class.java
-        )
-        binding.viewFinder.post { binding.viewFinder.setAspectRatio(previewSize.width, previewSize.height) }
-        val imageSize = getImageOutputSize(
-            characteristics,
-            ImageFormat.JPEG,
-            previewSize.width,
-            previewSize.height
-        )
-        imageReader = ImageReader.newInstance(
-            imageSize.size.width,
-            imageSize.size.height,
-            ImageFormat.JPEG,
-            IMAGE_BUFFER_SIZE
-        ).apply {
-            setOnImageAvailableListener(
-                { reader -> savePhoto(reader.acquireLatestImage()) }, readerHandler
-            )
-        }
-
         val cameraDeviceCallBack = object : CameraDevice.StateCallback() {
             override fun onOpened(cameraDevice: CameraDevice) {
                 this@Camera2Fragment.camera = cameraDevice
@@ -170,16 +173,14 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
             }
 
             override fun onDisconnected(cameraDevice: CameraDevice) {
-                cameraExecutor.shutdown()
                 requireActivity().finish()
             }
 
             override fun onError(cameraDevice: CameraDevice, error: Int) {
-                cameraExecutor.shutdown()
                 requireActivity().finish()
             }
         }
-        cameraManager.openCamera(cameraId, cameraDeviceCallBack, null)
+        cameraManager.openCamera(cameraId, cameraDeviceCallBack, cameraHandler)
     }
 
     private fun setOrientationChangedListener(cameraCharacteristics: CameraCharacteristics) {
@@ -202,88 +203,87 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         val sessionCallback = object : CameraCaptureSession.StateCallback() {
             override fun onConfigured(session: CameraCaptureSession) {
                 this@Camera2Fragment.captureSession = session
-                onSessionConfigured(session)
+                session.device.createCaptureRequest(TEMPLATE_PREVIEW).submitRepeating({
+                    addTarget(binding.viewFinder.holder.surface)
+                })
+                view?.post { setupZoomControl() }
+                cameraRequestExecutor.restart()
             }
 
             override fun onConfigureFailed(session: CameraCaptureSession) {
-                cameraExecutor.shutdown()
                 session.device.close()
                 requireActivity().finish()
             }
         }
-        cameraDevice.createCaptureSession(targets, sessionCallback, null)
+        cameraDevice.createCaptureSession(targets, sessionCallback, cameraHandler)
     }
 
-    private fun onSessionConfigured(session: CameraCaptureSession) {
-        session.device.createCaptureRequest(TEMPLATE_PREVIEW)
-            .apply { addTarget(binding.viewFinder.holder.surface) }
-            .build()
-            .submitRepeating()
-        setupZoomControl()
-    }
-
-    private fun takePhoto() = cameraExecutor.submit {
+    private fun takePhoto() = cameraRequestExecutor.submit {
+        view?.post { binding.captureButton.isEnabled = false }
         captureSession.device.createCaptureRequest(TEMPLATE_STILL_CAPTURE)
-            .apply {
+            .submit {
                 addTarget(imageReader.surface)
-                val flashMode = if(binding.flashLight.isSelected) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF
-                set(CaptureRequest.FLASH_MODE, flashMode)
+                if (binding.flashLight.isSelected) {
+                    set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
+                } else {
+                    set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+                }
+                getZoomRegion(binding.zoomSlider.value)?.let {
+                    set(CaptureRequest.SCALER_CROP_REGION, it)
+                }
             }
-            .build()
-            .submit()
+        view?.post { binding.captureButton.isEnabled = true }
     }
 
-    private fun setupZoomControl() = binding.zoomSliderContainer.post {
+    private fun setupZoomControl() {
         binding.zoomSliderContainer.isVisible = false
-        val sensorSize = characteristics.get(SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return@post
-        val maxZoom = characteristics.get(SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.takeIf { it.compareTo(1f) > 0 } ?: return@post
+        sensorSize = characteristics.get(SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return
+        maxZoom = characteristics.get(SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.takeIf { it.compareTo(1f) > 0 } ?: return
+
         binding.zoomSlider.valueFrom = 1f
+        binding.zoomSlider.value = 1f
         binding.zoomSlider.valueTo = maxZoom
         binding.zoomSlider.clearOnChangeListeners()
+
         binding.zoomSlider.addOnChangeListener { _, zoom, _ ->
-            cameraExecutor.submit {
-                val newZoom = MathUtils.clamp(zoom, 1f, maxZoom)
-                val centerX = sensorSize.width() / 2
-                val centerY = sensorSize.height() / 2
-                val deltaX = ((0.5f * sensorSize.width()) / newZoom).roundToInt()
-                val deltaY = ((0.5f * sensorSize.height()) / newZoom).roundToInt()
-                val cropRegion = Rect(
-                    centerX - deltaX,
-                    centerY - deltaY,
-                    centerX + deltaX,
-                    centerY + deltaY
-                )
-                captureSession.device.createCaptureRequest(TEMPLATE_PREVIEW)
-                    .apply {
-                        addTarget(binding.viewFinder.holder.surface)
-                        set(CaptureRequest.SCALER_CROP_REGION, cropRegion)
-                    }
-                    .build()
-                    .submitRepeating()
+            cameraRequestExecutor.submit {
+                captureSession.device.createCaptureRequest(TEMPLATE_PREVIEW).submitRepeating({
+                    addTarget(binding.viewFinder.holder.surface)
+                    getZoomRegion(zoom)?.let { set(CaptureRequest.SCALER_CROP_REGION, it) }
+                })
             }
         }
         binding.zoomSliderContainer.isVisible = true
     }
 
-    private fun CaptureRequest.submitRepeating(shouldStopPreRequest: Boolean = true) {
-        cameraExecutor.submit {
-            if (shouldStopPreRequest) {
-                captureSession.stopRepeating()
-            }
-            captureSession.setRepeatingRequest(this, null, null)
-        }
+    private fun getZoomRegion(zoomValue: Float): Rect? = sensorSize?.let {
+        val newZoom = MathUtils.clamp(zoomValue, 1f, maxZoom)
+        val centerX = it.width() / 2
+        val centerY = it.height() / 2
+        val deltaX = ((0.5f * it.width()) / newZoom).roundToInt()
+        val deltaY = ((0.5f * it.height()) / newZoom).roundToInt()
+        Rect(centerX - deltaX, centerY - deltaY, centerX + deltaX, centerY + deltaY)
     }
 
-    private fun CaptureRequest.submit() {
-        cameraExecutor.submit {
-            captureSession.capture(this, null, null)
+    private fun CaptureRequest.Builder.submitRepeating(
+        config: CaptureRequest.Builder.() -> Unit,
+        shouldStopPreRequest: Boolean = true
+    ) {
+        config(this)
+        if (shouldStopPreRequest) {
+            captureSession.stopRepeating()
         }
+        captureSession.setRepeatingRequest(this.build(), null, null)
+    }
+
+    private fun CaptureRequest.Builder.submit(config: CaptureRequest.Builder.() -> Unit) {
+        config(this)
+        captureSession.capture(this.build(), null, null)
     }
 
     private fun savePhoto(image: Image) = fileExecutor.execute {
         image.use {
-            val mirrored =
-                characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+            val mirrored = characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
             val exifOrientation = computeExifOrientation(rotation, mirrored)
             val buffer = it.planes[0].buffer
             val bytes = ByteArray(buffer.remaining()).apply { buffer.get(this) }
@@ -292,16 +292,13 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
             val exif = ExifInterface(output.absolutePath)
             exif.setAttribute(ExifInterface.TAG_ORIENTATION, exifOrientation.toString())
             exif.saveAttributes()
-            binding.captureButton.post { onImageSaved(output.toUri()) }
+            binding.captureButton.post {
+                (requireActivity() as? MainActivity)?.showResult(output.toUri())
+            }
         }
     }
 
-    private fun onImageSaved(uri: Uri) {
-        binding.captureButton.isEnabled = true
-        (requireActivity() as? MainActivity)?.showResult(uri)
-    }
-
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
+    private val allPermissionsGranted get() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(requireContext(), it) == PackageManager.PERMISSION_GRANTED
     }
 
@@ -312,9 +309,8 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
 
     override fun onDestroy() {
         super.onDestroy()
-        readerHandler.removeCallbacksAndMessages(null)
         fileExecutor.shutdown()
-        cameraExecutor.shutdown()
+        cameraThread.quitSafely()
         readerThread.quitSafely()
         permissionLauncher.unregister()
     }
@@ -328,7 +324,7 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     }
 
     companion object {
-        private const val IMAGE_BUFFER_SIZE = 1
+        private const val IMAGE_BUFFER_SIZE = 3
         private val REQUIRED_PERMISSIONS = mutableListOf(Manifest.permission.CAMERA).apply {
             if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                 add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
