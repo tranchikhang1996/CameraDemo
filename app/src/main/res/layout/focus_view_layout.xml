@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <ImageView
+        android:visibility="gone"
+        android:id="@+id/focus"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:src="@drawable/ic_focus" />
+</merge>

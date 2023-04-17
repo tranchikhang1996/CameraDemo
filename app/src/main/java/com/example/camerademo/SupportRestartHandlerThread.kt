@@ -1,4 +1,4 @@
-package com.example.camerademo.utils
+package com.example.camerademo
 
 import android.os.Handler
 import android.os.HandlerThread
@@ -18,12 +18,14 @@ class SupportRestartHandlerThread(private val name: String) {
     }
 
     @Synchronized
-    fun restart() {
-        if (isShutdown) {
+    fun restart(): Handler {
+        return if (isShutdown) {
             handlerThread = HandlerThread(name).apply { start() }
-            handler = Handler(handlerThread.looper)
-            isShutdown = false
-        }
+            Handler(handlerThread.looper).apply {
+                this@SupportRestartHandlerThread.handler = this
+                isShutdown = false
+            }
+        } else handler
     }
 
     @Synchronized
