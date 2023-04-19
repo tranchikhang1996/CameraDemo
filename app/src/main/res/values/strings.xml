@@ -1,3 +1,26 @@
 <resources>
     <string name="app_name">CameraDemo</string>
+    <string name="wb_auto">WB\nAuto</string>
+    <string name="f_auto">F\nAuto</string>
+    <string name="iso_auto">ISO\nAuto</string>
+    <string name="effect_original">Effect\nOriginal</string>
+    <string name="hdr">HDR\nOff</string>
+    <string name="ev_auto">EV\nAuto</string>
+
+    <string-array name="white_balance_array">
+        <item>Auto</item>
+        <item>Daylight</item>
+        <item>Fluorescent</item>
+        <item>Twilight</item>
+        <item>Cloudy</item>
+    </string-array>
+
+    <string-array name="effect_mode_array">
+        <item>Original</item>
+        <item>Aqua</item>
+        <item>Sepia</item>
+        <item>White board</item>
+        <item>Mono</item>
+        <item>Solarize</item>
+    </string-array>
 </resources>

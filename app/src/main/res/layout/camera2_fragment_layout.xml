@@ -23,43 +23,110 @@
         app:layout_constraintStart_toStartOf="@id/view_finder"
         app:layout_constraintTop_toTopOf="@id/view_finder" />
 
+    <TextView
+        android:id="@+id/zoomState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/white"
+        android:textSize="24sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/view_finder"
+        app:layout_constraintEnd_toEndOf="@id/view_finder"
+        app:layout_constraintStart_toStartOf="@id/view_finder"
+        app:layout_constraintTop_toTopOf="@id/view_finder" />
+
     <View
         android:id="@+id/flash_light"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
         android:layout_margin="16dp"
         android:background="@drawable/ic_flashlight"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <FrameLayout
-        android:id="@+id/zoom_slider_container"
+    <Spinner
+        android:id="@+id/wb_spinner"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        app:layout_constraintBottom_toBottomOf="@id/white_balance_mode"
+        app:layout_constraintStart_toStartOf="@id/white_balance_mode" />
+
+    <TextView
+        android:id="@+id/white_balance_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:text="@string/wb_auto"
+        android:textAlignment="center"
+        android:textColor="@color/white"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:tag="FOCUS_DISTANCE"
+        android:id="@+id/focus_distance_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:text="@string/f_auto"
+        android:textAlignment="center"
+        android:textColor="@color/text_select_color"
+        app:layout_constraintStart_toEndOf="@id/white_balance_mode"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/hdr_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:text="@string/hdr"
+        android:textAlignment="center"
+        android:textColor="@color/text_select_color"
+        app:layout_constraintStart_toEndOf="@id/focus_distance_mode"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:tag="ISO"
+        android:id="@+id/iso_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:text="@string/iso_auto"
+        android:textAlignment="center"
+        android:textColor="@color/text_select_color"
+        app:layout_constraintStart_toEndOf="@id/hdr_mode"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Spinner
+        android:id="@+id/effect_spinner"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        app:layout_constraintBottom_toBottomOf="@id/effect_mode"
+        app:layout_constraintStart_toStartOf="@id/effect_mode" />
+
+    <TextView
+        android:id="@+id/effect_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:text="@string/effect_original"
+        android:textAlignment="center"
+        android:textColor="@color/white"
+        app:layout_constraintStart_toEndOf="@id/iso_mode"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <com.google.android.material.slider.Slider
+        android:visibility="gone"
+        android:id="@+id/value_slider"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginBottom="8dp"
-        app:layout_constraintBottom_toTopOf="@id/captureButton"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:stepSize="0.1"
+        app:labelBehavior="floating"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
-
-        <com.google.android.material.slider.Slider
-            android:id="@+id/zoom_slider"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="32dp"
-            android:stepSize="0.1"
-            android:value="1"
-            android:valueFrom="0"
-            android:valueTo="1"
-            app:labelBehavior="floating" />
-
-        <View
-            android:id="@+id/ic_zoom"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_gravity="center_vertical"
-            android:background="@drawable/ic_zoom" />
-    </FrameLayout>
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/focus_distance_mode" />
 
     <View
         android:id="@+id/captureButton"
@@ -73,12 +140,12 @@
 
     <View
         android:id="@+id/switch_cam"
-        app:layout_constraintTop_toTopOf="@id/captureButton"
-        app:layout_constraintBottom_toBottomOf="@id/captureButton"
-        app:layout_constraintStart_toEndOf="@id/captureButton"
-        app:layout_constraintEnd_toEndOf="parent"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:background="@drawable/ic_switch_cam"/>
+        android:background="@drawable/ic_switch_cam"
+        app:layout_constraintBottom_toBottomOf="@id/captureButton"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/captureButton"
+        app:layout_constraintTop_toTopOf="@id/captureButton" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
