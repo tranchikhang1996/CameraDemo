@@ -63,11 +63,11 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
-        android:tag="FOCUS_DISTANCE"
         android:id="@+id/focus_distance_mode"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
+        android:tag="FOCUS_DISTANCE"
         android:text="@string/f_auto"
         android:textAlignment="center"
         android:textColor="@color/text_select_color"
@@ -86,11 +86,11 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
-        android:tag="ISO"
         android:id="@+id/iso_mode"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
+        android:tag="ISO"
         android:text="@string/iso_auto"
         android:textAlignment="center"
         android:textColor="@color/text_select_color"
@@ -116,17 +116,67 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <com.google.android.material.slider.Slider
-        android:visibility="gone"
         android:id="@+id/value_slider"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="16dp"
         android:layout_marginTop="8dp"
         android:stepSize="0.1"
+        android:visibility="gone"
         app:labelBehavior="floating"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/focus_distance_mode" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toTopOf="@id/captureButton"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:id="@+id/modes"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:tag="photo"
+                android:id="@+id/photo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:text="@string/photo"
+                android:textColor="@color/text_select_color"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/video"
+                android:tag="video"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:text="@string/video"
+                android:textColor="@color/text_select_color"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <TextView
+        android:visibility="gone"
+        android:id="@+id/video_time"
+        android:textColor="@color/white"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/view_finder"/>
 
     <View
         android:id="@+id/captureButton"

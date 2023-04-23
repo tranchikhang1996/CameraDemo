@@ -34,4 +34,12 @@ class SupportRestartHandlerThread(private val name: String) {
             handler.post(task)
         }
     }
+
+    @Synchronized
+    fun submitDelayed(task: Runnable, delay: Long) {
+        if (!isShutdown) {
+            handler.removeCallbacks(task)
+            handler.postDelayed(task, delay)
+        }
+    }
 }

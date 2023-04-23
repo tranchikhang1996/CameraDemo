@@ -11,14 +11,18 @@ import android.util.Range
 import android.view.*
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import com.example.camerademo.camera.*
+import com.example.camerademo.camera.TargetAspectRatio.SIZE_3_4
 import com.example.camerademo.camera.usecase.PhotoCaptureUseCase
 import com.example.camerademo.camera.usecase.PreviewUseCase
+import com.example.camerademo.camera.usecase.VideoCaptureUseCase
 import com.example.camerademo.camera.utils.*
 import com.example.camerademo.databinding.Camera2FragmentLayoutBinding
 import java.util.*
@@ -28,7 +32,9 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     private lateinit var permissionLauncher: ActivityResultLauncher<Array<String>>
 
     private var camera: Camera? = null
-    private var captureUseCase: PhotoCaptureUseCase? = null
+    private var previewUseCase: PreviewUseCase? = null
+    private var photoUseCase: PhotoCaptureUseCase? = null
+    private var videoUseCase: VideoCaptureUseCase? = null
     private val lenFacings = listOf(LENS_FACING_BACK, LENS_FACING_FRONT).filter {
         !Camera.cameraIds[it].isNullOrEmpty()
     }
@@ -38,6 +44,8 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     private var setting = CameraSetting()
 
     private var sliderTag: Any? = null
+
+    private var mode: String = "photo"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,13 +79,62 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
             tapToFocusGestureDetector.onTouchEvent(event)
             true
         }
-        binding.captureButton.setOnClickListener { captureUseCase?.capture() }
         binding.switchCam.setOnClickListener { switchLen() }
+        setupCaptureButton()
         setupFlashControl()
         setupAWBControl()
         setupEffectControl()
         setupHdrControl()
         setupSlider()
+        setupModes()
+    }
+
+    private fun setupCaptureButton() {
+        binding.captureButton.setOnClickListener {
+            if (mode == "photo") {
+                photoUseCase?.capture()
+            } else {
+                if(binding.captureButton.isSelected) {
+                    videoUseCase?.stopRecord()
+                } else {
+                    videoUseCase?.startRecord()
+                }
+                binding.captureButton.isSelected = !binding.captureButton.isSelected
+            }
+        }
+    }
+
+    private fun setupModes() {
+        binding.modes.children.forEach {
+            it.isSelected = (it.tag as String) == mode
+        }
+        binding.photo.setOnClickListener { view ->
+            for (child in binding.modes.children) {
+                child.isSelected = view == child
+            }
+            changeMode(view.tag as String)
+            binding.videoTime.isVisible = false
+            binding.captureButton.setBackgroundResource(R.drawable.ic_capture)
+        }
+
+        binding.video.setOnClickListener { view ->
+            mode = view.tag as String
+            for (child in binding.modes.children) {
+                child.isSelected = view == child
+            }
+            changeMode(view.tag as String)
+
+            binding.videoTime.isVisible = true
+            binding.captureButton.setBackgroundResource(R.drawable.video_button_background)
+            binding.captureButton.isSelected = false
+        }
+    }
+
+    private fun changeMode(mode: String) {
+        this.mode = mode
+        Camera.close()
+        resetSetting()
+        tryToOpenCamera()
     }
 
     @SuppressLint("SetTextI18n")
@@ -134,7 +191,8 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
                     newZoom = zoomRange.upper
                 }
                 if (newZoom.compareTo(currentZoom) != 0) {
-                    setting.copy(zoomFactor = newZoom, zoomRegion = cam.getZoomRegion(newZoom)).submit()
+                    setting.copy(zoomFactor = newZoom, zoomRegion = cam.getZoomRegion(newZoom))
+                        .submit()
                     view?.handler?.removeCallbacks(hideZoomInfo)
                     view?.post {
                         binding.zoomState.isVisible = true
@@ -149,7 +207,9 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
 
     private fun tapToFocus(event: MotionEvent): Boolean {
         binding.focusView.showFocus(event.x.toInt(), event.y.toInt())
-        camera?.manualFocus(event.x, event.y)
+        previewUseCase?.getPreViewSize()?.let {
+            camera?.manualFocus(event.x, event.y, it)
+        }
         return true
     }
 
@@ -297,14 +357,16 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        binding.switchCam.isEnabled = true
+        binding.switchCam.isVisible = true
+        binding.modes.isVisible = true
         tryToOpenCamera()
     }
 
     override fun surfaceChanged(p0: SurfaceHolder, p1: Int, p2: Int, p3: Int) = Unit
 
     override fun surfaceDestroyed(p0: SurfaceHolder) {
-        binding.switchCam.isEnabled = false
+        binding.switchCam.isVisible = false
+        binding.modes.isVisible = false
     }
 
     private fun switchLen() {
@@ -318,22 +380,41 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     }
 
     private fun tryToOpenCamera() {
-        if (allPermissionsGranted) {
-            val previewUseCase = PreviewUseCase(binding.viewFinder, TargetAspectRatio.SIZE_3_4)
-            captureUseCase = PhotoCaptureUseCase(requireContext(), TargetAspectRatio.SIZE_3_4) {
-                view?.post { (requireActivity() as MainActivity).showResult(it) }
-            }
-            camera = Camera.open(currentLen, setting, previewUseCase, captureUseCase!!).apply {
-                setupFocusDistanceControl(characteristics.get(LENS_INFO_MINIMUM_FOCUS_DISTANCE))
-                setupISOControl(characteristics.get(SENSOR_INFO_SENSITIVITY_RANGE))
-            }
-        } else {
-            permissionLauncher.launch(REQUIRED_PERMISSIONS)
+        if (!allPermissionsGranted) {
+            return permissionLauncher.launch(REQUIRED_PERMISSIONS)
         }
+        val previewUseCase = PreviewUseCase(binding.viewFinder, SIZE_3_4)
+        val camera = when (mode) {
+            "photo" -> {
+                photoUseCase = PhotoCaptureUseCase(requireContext(), SIZE_3_4) {
+                    view?.post { (requireActivity() as MainActivity).showResult(it) }
+                }
+                Camera.open(currentLen, setting, previewUseCase, photoUseCase!!)
+            }
+            "video" -> {
+                videoUseCase = VideoCaptureUseCase(requireContext(), {
+                    binding.root.post { binding.videoTime.text = it}
+                }, {
+                    binding.root.post { Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show() }
+                })
+                Camera.open(currentLen, setting, previewUseCase, videoUseCase!!)
+            }
+            else -> throw RuntimeException("$mode is not support")
+        }
+        camera.apply {
+            setupFocusDistanceControl(characteristics.get(LENS_INFO_MINIMUM_FOCUS_DISTANCE))
+            setupISOControl(characteristics.get(SENSOR_INFO_SENSITIVITY_RANGE))
+        }
+        this.camera = camera
     }
 
     private val allPermissionsGranted
-        get() = REQUIRED_PERMISSIONS.all { ContextCompat.checkSelfPermission(requireContext(), it) == PackageManager.PERMISSION_GRANTED }
+        get() = REQUIRED_PERMISSIONS.all {
+            ContextCompat.checkSelfPermission(
+                requireContext(),
+                it
+            ) == PackageManager.PERMISSION_GRANTED
+        }
 
     override fun onDestroyView() {
         view?.handler?.removeCallbacksAndMessages(null)
@@ -346,7 +427,7 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     }
 
     companion object {
-        private val REQUIRED_PERMISSIONS = mutableListOf(Manifest.permission.CAMERA).apply {
+        private val REQUIRED_PERMISSIONS = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO).apply {
             if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                 add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             }

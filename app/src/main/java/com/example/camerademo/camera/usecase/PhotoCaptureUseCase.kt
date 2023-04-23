@@ -4,18 +4,15 @@ import android.content.Context
 import android.graphics.ImageFormat
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.CaptureRequest
 import android.media.Image
 import android.media.ImageReader
 import android.media.ImageReader.OnImageAvailableListener
 import android.net.Uri
-import android.os.Build
 import android.os.Environment
 import android.view.Surface
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import com.example.camerademo.camera.Camera
-import com.example.camerademo.camera.CameraSetting
 import com.example.camerademo.camera.utils.getImageSizes
 import com.example.camerademo.SupportRestartHandlerThread
 import java.io.File
@@ -29,25 +26,25 @@ class PhotoCaptureUseCase(
     private val onImageSaved: ((Uri) -> Unit)?
 ) : CameraCaptureSession.CaptureCallback(), OnImageAvailableListener, CameraUseCase {
     @Volatile
-    private var requestBuilder: CaptureRequest.Builder? = null
-    @Volatile
     private lateinit var imageReader: ImageReader
+
     @Volatile
     private var camera: Camera? = null
     private val readerThread = SupportRestartHandlerThread("image_reader")
     private var savedImagedThread = SupportRestartHandlerThread("save_file")
 
     fun capture() {
-        requestBuilder?.let { builder ->
-            camera?.submitRequest { session -> session.capture(builder.build(), null, null) }
+        camera?.capture(CameraDevice.TEMPLATE_STILL_CAPTURE, null) { builder, setting ->
+            builder.addTarget(imageReader.surface)
+            setting.flashMode.config(builder)
         }
     }
 
-    override fun createSurface(): Surface = imageReader.surface
+    override fun getSurface(): Surface = imageReader.surface
 
     override fun onAttach(camera: Camera) {
         this.camera = camera
-        val outputSizes = getImageSizes(camera.characteristics, ImageFormat.JPEG)
+        val outputSizes = getImageSizes(camera.characteristics, ImageReader::class.java, ImageFormat.JPEG)
         savedImagedThread.restart()
         outputSizes[targetAspectRatio]?.let {
             imageReader = ImageReader.newInstance(it.width, it.height, ImageFormat.JPEG, 1).apply {
@@ -56,39 +53,10 @@ class PhotoCaptureUseCase(
         }
     }
 
-    override fun onCameraReady(camera: Camera, setting: CameraSetting, session: CameraCaptureSession) {
-        requestBuilder = session.device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
-            addTarget(imageReader.surface)
-            applySetting(setting)
-        }
-    }
-
     override fun onDetach(camera: Camera) {
         this.camera = null
         readerThread.shutdown()
         savedImagedThread.shutdown()
-    }
-
-    private fun CaptureRequest.Builder.applySetting(setting: CameraSetting) {
-        set(CaptureRequest.SCALER_CROP_REGION, setting.zoomRegion)
-        set(CaptureRequest.CONTROL_AWB_MODE, setting.wbMode)
-        set(CaptureRequest.CONTROL_EFFECT_MODE, setting.effectMode)
-        setting.flashMode.config(this)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
-            set(CaptureRequest.CONTROL_SCENE_MODE, CaptureRequest.CONTROL_SCENE_MODE_HDR)
-        }
-        set(CaptureRequest.SENSOR_SENSITIVITY, setting.iso)
-        if(setting.focusDistance != null) {
-            set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-            set(CaptureRequest.LENS_FOCUS_DISTANCE, setting.focusDistance)
-        } else {
-            set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
-            set(CaptureRequest.LENS_FOCUS_DISTANCE, null)
-        }
-    }
-
-    override fun onSettingChanged(setting: CameraSetting) {
-        requestBuilder?.applySetting(setting)
     }
 
     override fun onImageAvailable(reader: ImageReader) {

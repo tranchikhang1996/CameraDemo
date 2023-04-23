@@ -74,16 +74,31 @@ fun <T> getPreviewSizes(
     return size.mapValues { entry -> entry.value.sortedWith(compareBy { it.size.height * it.size.width }).last().size }
 }
 
-fun getImageSizes(
+fun <T> getImageSizes(
     characteristics: CameraCharacteristics,
-    format: Int,
+    targetClass: Class<T>,
+    format: Int? = null,
 ): Map<String, Size> {
     val config = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-    return config.getOutputSizes(format)
+    return (if (format == null) config.getOutputSizes(targetClass) else config.getOutputSizes(format))
         .groupBy { findRatio(it.width, it.height) }
         .mapValues { entry ->
             entry.value.sortedWith(compareBy<Size> { it.height * it.width }).last()
         }
+}
+
+fun <T> getVideoSizes(
+    characteristics: CameraCharacteristics,
+    targetClass: Class<T>,
+    format: Int? = null,
+): Map<String, Size> {
+    val maxSize = SIZE_1080P
+    val config = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
+    val size = (if (format == null) config.getOutputSizes(targetClass) else config.getOutputSizes(format))
+        .map { SmartSize(it.width, it.height) }
+        .filter { it.long <= maxSize.long && it.short <= maxSize.short }
+        .groupBy { findRatio(it.size.width, it.size.height) }
+    return size.mapValues { entry -> entry.value.sortedWith(compareBy { it.size.height * it.size.width }).last().size }
 }
 
 private fun findRatio(width: Int, height: Int): String {

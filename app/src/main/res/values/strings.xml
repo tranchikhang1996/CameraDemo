@@ -6,6 +6,8 @@
     <string name="effect_original">Effect\nOriginal</string>
     <string name="hdr">HDR\nOff</string>
     <string name="ev_auto">EV\nAuto</string>
+    <string name="video">video</string>
+    <string name="photo">photo</string>
 
     <string-array name="white_balance_array">
         <item>Auto</item>
