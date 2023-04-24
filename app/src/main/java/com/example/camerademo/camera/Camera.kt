@@ -248,6 +248,14 @@ class Camera private constructor(
             set(CONTROL_AF_MODE, CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             set(LENS_FOCUS_DISTANCE, null)
         }
+        if(setting.shutterSpeed != null) {
+            set(CONTROL_AE_MODE, CONTROL_AE_MODE_OFF)
+            set(SENSOR_EXPOSURE_TIME, setting.shutterSpeed)
+        } else {
+            set(CONTROL_MODE, CONTROL_MODE_AUTO)
+            set(CONTROL_AE_MODE, CONTROL_AE_MODE_ON)
+            set(SENSOR_EXPOSURE_TIME, null)
+        }
     }
 
     fun manualFocus(x: Float, y: Float, size: Size) = cameraHandler.submit {

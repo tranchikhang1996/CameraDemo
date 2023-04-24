@@ -26,6 +26,9 @@ import com.example.camerademo.camera.usecase.VideoCaptureUseCase
 import com.example.camerademo.camera.utils.*
 import com.example.camerademo.databinding.Camera2FragmentLayoutBinding
 import java.util.*
+import kotlin.math.ceil
+import kotlin.math.ln
+import kotlin.math.pow
 
 class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     private lateinit var binding: Camera2FragmentLayoutBinding
@@ -161,6 +164,15 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
                     binding.isoMode.text = String.format(Locale.US, "ISO\n%.1f", value)
                     setting.copy(iso = value.toInt()).submit()
                 }
+                binding.shutterSpeedMode.tag -> {
+                    val tagValues = binding.shutterSpeedMode.tag.toString().split(':')
+                    val minValue = tagValues[1].toLong()
+                    val maxValue = tagValues[2].toLong()
+                    val ss = (minValue * (2.0.pow(value.toDouble()))).toLong()
+                    val validSS = if(ss < minValue) minValue else if(ss > maxValue) maxValue else ss
+                    binding.shutterSpeedMode.text = String.format(Locale.US, "S\n%s", formatSS(validSS))
+                    setting.copy(shutterSpeed = validSS).submit()
+                }
             }
         }
 
@@ -173,6 +185,10 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
                 binding.isoMode.tag -> {
                     binding.isoMode.text = String.format(Locale.US, "ISO\n%s", "Auto")
                     setting.copy(iso = null).submit()
+                }
+                binding.shutterSpeedMode.tag -> {
+                    binding.shutterSpeedMode.text = String.format(Locale.US, "S\n%s", "Auto")
+                    setting.copy(shutterSpeed = null).submit()
                 }
             }
         }
@@ -317,12 +333,46 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
             } else {
                 sliderTag = it.tag
                 binding.sliderFrame.isVisible = true
+                binding.valueSlider.stepSize = 0.1f
                 binding.valueSlider.valueFrom = 0f
                 binding.valueSlider.valueTo = minimumDistance
                 binding.valueSlider.value = setting.focusDistance ?: 0f
             }
             it.isSelected = !it.isSelected
+        }
+    }
 
+    private fun setupShutterSpeed(range: Range<Long>?) {
+        range ?: return binding.shutterSpeedMode.setOnClickListener(null)
+        val minimum = if(1_000_000L in range) 1_000_000L else range.lower
+        val maximum = if(range.upper > 125_000_000L) 125_000_000L else range.upper
+        val numStep = ceil(ln(maximum.toDouble() / minimum.toDouble()) / ln(2.0))
+        binding.shutterSpeedMode.tag = "SS:${minimum}:${maximum}"
+        binding.shutterSpeedMode.setOnClickListener {
+            if(it.isSelected) {
+                sliderTag = null
+                binding.sliderFrame.isVisible = false
+            } else {
+                sliderTag = it.tag
+                binding.sliderFrame.isVisible = true
+                binding.valueSlider.stepSize = 1f
+                binding.valueSlider.valueFrom = 0f
+                binding.valueSlider.valueTo = numStep.toFloat()
+                val sliderValue = setting.shutterSpeed?.let { ss ->
+                    ceil(ln(ss.toDouble() / minimum.toDouble()) / ln(2.0)).toFloat()
+                } ?: 0f
+                binding.valueSlider.value = sliderValue
+            }
+            it.isSelected = !it.isSelected
+        }
+    }
+
+    private fun formatSS(value: Long): String {
+        val secondToNano = 1_000_000_000L
+        return if (value >= secondToNano) {
+            "${value / secondToNano}"
+        } else {
+            "1/${(secondToNano / value)}"
         }
     }
 
@@ -335,6 +385,7 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
             } else {
                 sliderTag = it.tag
                 binding.sliderFrame.isVisible = true
+                binding.valueSlider.stepSize = 0.1f
                 binding.valueSlider.valueFrom = range.lower.toFloat()
                 binding.valueSlider.valueTo = range.upper.toFloat()
                 binding.valueSlider.value = (setting.iso ?: range.lower).toFloat()
@@ -420,6 +471,7 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         camera.apply {
             setupFocusDistanceControl(characteristics.get(LENS_INFO_MINIMUM_FOCUS_DISTANCE))
             setupISOControl(characteristics.get(SENSOR_INFO_SENSITIVITY_RANGE))
+            setupShutterSpeed(characteristics.get(SENSOR_INFO_EXPOSURE_TIME_RANGE))
         }
         this.camera = camera
     }

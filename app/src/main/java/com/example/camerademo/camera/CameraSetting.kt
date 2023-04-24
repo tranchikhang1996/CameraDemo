@@ -10,6 +10,7 @@ data class CameraSetting(
     val wbMode: Int = CaptureRequest.CONTROL_AWB_MODE_AUTO,
     val effectMode: Int = CaptureRequest.CONTROL_EFFECT_MODE_OFF,
     val focusDistance: Float? = null,
+    val shutterSpeed: Long? = null,
     val hdr: Boolean = false,
     val iso: Int? = null
 )

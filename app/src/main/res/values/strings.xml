@@ -8,6 +8,7 @@
     <string name="ev_auto">EV\nAuto</string>
     <string name="video">video</string>
     <string name="photo">photo</string>
+    <string name="shutter_auto">S\nAuto</string>
 
     <string-array name="white_balance_array">
         <item>Auto</item>
