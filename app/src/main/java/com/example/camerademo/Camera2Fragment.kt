@@ -351,7 +351,9 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     }
 
     private fun onPermissionResult() {
-        if (!allPermissionsGranted) {
+        if (allPermissionsGranted) {
+            tryToOpenCamera()
+        } else {
             requireActivity().finish()
         }
     }
