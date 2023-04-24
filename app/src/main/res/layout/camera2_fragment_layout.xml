@@ -115,18 +115,40 @@
         app:layout_constraintStart_toEndOf="@id/iso_mode"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <com.google.android.material.slider.Slider
-        android:id="@+id/value_slider"
+    <LinearLayout
+        android:id="@+id/slider_frame"
+        android:orientation="horizontal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="16dp"
         android:layout_marginTop="8dp"
-        android:stepSize="0.1"
         android:visibility="gone"
-        app:labelBehavior="floating"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/focus_distance_mode" />
+        app:layout_constraintTop_toBottomOf="@id/focus_distance_mode">
+
+        <TextView
+            android:id="@+id/auto"
+            android:textColor="@color/white"
+            android:text="Auto"
+            android:layout_margin="16dp"
+            android:layout_gravity="center"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/value_slider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="8dp"
+            android:stepSize="0.1"
+            app:labelBehavior="floating"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/focus_distance_mode" />
+
+    </LinearLayout>
 
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"

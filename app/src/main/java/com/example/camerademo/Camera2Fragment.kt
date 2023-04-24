@@ -146,7 +146,7 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         binding.isoMode.text = "ISO\nAuto"
         binding.effectMode.text = "Effect\nOriginal"
         sliderTag = null
-        binding.valueSlider.isVisible = false
+        binding.sliderFrame.isVisible = false
     }
 
     private fun setupSlider() {
@@ -160,6 +160,19 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
                 binding.isoMode.tag -> {
                     binding.isoMode.text = String.format(Locale.US, "ISO\n%.1f", value)
                     setting.copy(iso = value.toInt()).submit()
+                }
+            }
+        }
+
+        binding.auto.setOnClickListener {
+            when (sliderTag) {
+                binding.focusDistanceMode.tag -> {
+                    binding.focusDistanceMode.text = String.format(Locale.US, "F\n%s", "Auto")
+                    setting.copy(focusDistance = null).submit()
+                }
+                binding.isoMode.tag -> {
+                    binding.isoMode.text = String.format(Locale.US, "ISO\n%s", "Auto")
+                    setting.copy(iso = null).submit()
                 }
             }
         }
@@ -300,10 +313,10 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         binding.focusDistanceMode.setOnClickListener {
             if (it.isSelected) {
                 sliderTag = null
-                binding.valueSlider.isVisible = false
+                binding.sliderFrame.isVisible = false
             } else {
                 sliderTag = it.tag
-                binding.valueSlider.isVisible = true
+                binding.sliderFrame.isVisible = true
                 binding.valueSlider.valueFrom = 0f
                 binding.valueSlider.valueTo = minimumDistance
                 binding.valueSlider.value = setting.focusDistance ?: 0f
@@ -318,10 +331,10 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         binding.isoMode.setOnClickListener {
             if (it.isSelected) {
                 sliderTag = null
-                binding.valueSlider.isVisible = false
+                binding.sliderFrame.isVisible = false
             } else {
                 sliderTag = it.tag
-                binding.valueSlider.isVisible = true
+                binding.sliderFrame.isVisible = true
                 binding.valueSlider.valueFrom = range.lower.toFloat()
                 binding.valueSlider.valueTo = range.upper.toFloat()
                 binding.valueSlider.value = (setting.iso ?: range.lower).toFloat()
@@ -333,6 +346,7 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     private fun setupHdrControl() {
         binding.hdrMode.setOnClickListener {
             it.isSelected = !it.isSelected
+            binding.hdrMode.text = String.format("HDR\n%s", if(it.isSelected) "On" else "Off")
             setting.copy(hdr = it.isSelected).submit()
         }
     }
