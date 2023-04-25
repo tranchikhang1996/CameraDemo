@@ -84,10 +84,6 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         }
         binding.switchCam.setOnClickListener { switchLen() }
         setupCaptureButton()
-        setupFlashControl()
-        setupAWBControl()
-        setupEffectControl()
-        setupHdrControl()
         setupSlider()
         setupModes()
     }
@@ -136,7 +132,6 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
     private fun changeMode(mode: String) {
         this.mode = mode
         Camera.close()
-        resetSetting()
         tryToOpenCamera()
     }
 
@@ -147,7 +142,9 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         binding.focusDistanceMode.text = "F\nAuto"
         binding.hdrMode.text = "HDR\nOff"
         binding.isoMode.text = "ISO\nAuto"
+        binding.shutterSpeedMode.text = "S\nAuto"
         binding.effectMode.text = "Effect\nOriginal"
+        binding.flashLight.isSelected = false
         sliderTag = null
         binding.sliderFrame.isVisible = false
     }
@@ -442,7 +439,6 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         if (oldLen == currentLen) return
         Log.d("CAMERA_TEST", "switch len with $currentLen")
         Camera.close()
-        resetSetting()
         tryToOpenCamera()
     }
 
@@ -450,6 +446,7 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
         if (!allPermissionsGranted) {
             return permissionLauncher.launch(REQUIRED_PERMISSIONS)
         }
+        resetSetting()
         val previewUseCase = PreviewUseCase(binding.viewFinder, SIZE_3_4)
         val camera = when (mode) {
             "photo" -> {
@@ -469,6 +466,10 @@ class Camera2Fragment : Fragment(), SurfaceHolder.Callback {
             else -> throw RuntimeException("$mode is not support")
         }
         camera.apply {
+            setupFlashControl()
+            setupAWBControl()
+            setupEffectControl()
+            setupHdrControl()
             setupFocusDistanceControl(characteristics.get(LENS_INFO_MINIMUM_FOCUS_DISTANCE))
             setupISOControl(characteristics.get(SENSOR_INFO_SENSITIVITY_RANGE))
             setupShutterSpeed(characteristics.get(SENSOR_INFO_EXPOSURE_TIME_RANGE))
